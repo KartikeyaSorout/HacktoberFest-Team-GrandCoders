@@ -138,3 +138,116 @@ def test_ai_service_threadpool_execution(monkeypatch):
     assert res == "Mocked AI response"
     mock_model.generate_content.assert_called_once_with("test prompt")
 
+
+def test_user_profile_missing_username():
+    """Verify 422 validation error when username query param is missing."""
+    response = client.get("/api/user/profile")
+    assert response.status_code == 422
+
+
+def test_user_prs_missing_username():
+    """Verify 422 validation error when username query param is missing."""
+    response = client.get("/api/user/prs")
+    assert response.status_code == 422
+
+
+def test_user_profile_mocked(monkeypatch):
+    """Verify user profile endpoint with mocked GitHub client response."""
+    from app.services.github_client import github_client
+    from unittest.mock import AsyncMock
+
+    mock_profile = {
+        "login": "octocat",
+        "name": "The Octocat",
+        "avatar_url": "https://avatars.githubusercontent.com/u/583231",
+        "bio": "Building the world's best code.",
+        "html_url": "https://github.com/octocat",
+        "public_repos": 8,
+        "followers": 12000,
+    }
+
+    monkeypatch.setattr(github_client, "get_user_profile", AsyncMock(return_value=mock_profile))
+    response = client.get("/api/user/profile?username=octocat")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["login"] == "octocat"
+    assert data["name"] == "The Octocat"
+    assert data["public_repos"] == 8
+
+
+def test_user_prs_mocked(monkeypatch):
+    """Verify user PRs live sync endpoint with categorized statuses and stats."""
+    from app.services.github_client import github_client
+    from unittest.mock import AsyncMock
+
+    mock_prs_result = {
+        "username": "octocat",
+        "prs": [
+            {
+                "id": "PR-101",
+                "number": 101,
+                "repo": "owner/repo",
+                "title": "fix: update header typography",
+                "status": "MERGED",
+                "status_label": "Merged",
+                "badge_class": "tag--beginner",
+                "bg_pill": "#D1FAE5",
+                "color_pill": "#065F46",
+                "date": "Oct 10, 2026",
+                "created_at": "2026-10-10T12:00:00Z",
+                "updated_at": "2026-10-10T13:00:00Z",
+                "html_url": "https://github.com/owner/repo/pull/101",
+                "is_merged": True,
+                "is_draft": False,
+                "comments": 2,
+                "labels": ["hacktoberfest-accepted"],
+                "requested_reviewers": [],
+                "reviews_count": 1,
+            },
+            {
+                "id": "PR-102",
+                "number": 102,
+                "repo": "owner/repo2",
+                "title": "feat: add user live sync",
+                "status": "IN_REVIEW",
+                "status_label": "In Review",
+                "badge_class": "tag--intermediate",
+                "bg_pill": "#FEF3C7",
+                "color_pill": "#92400E",
+                "date": "Oct 12, 2026",
+                "created_at": "2026-10-12T12:00:00Z",
+                "updated_at": "2026-10-12T13:00:00Z",
+                "html_url": "https://github.com/owner/repo2/pull/102",
+                "is_merged": False,
+                "is_draft": False,
+                "comments": 0,
+                "labels": ["enhancement"],
+                "requested_reviewers": ["reviewer1"],
+                "reviews_count": 0,
+            },
+        ],
+        "stats": {
+            "total_prs": 2,
+            "merged_count": 1,
+            "in_review_count": 1,
+            "pushed_count": 0,
+            "working_on_count": 0,
+            "closed_count": 0,
+            "target": 4,
+            "progress": 0.25,
+            "milestone_reached": False,
+        },
+    }
+
+    monkeypatch.setattr(github_client, "get_user_prs", AsyncMock(return_value=mock_prs_result))
+    response = client.get("/api/user/prs?username=octocat")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == "octocat"
+    assert len(data["prs"]) == 2
+    assert data["prs"][0]["status"] == "MERGED"
+    assert data["prs"][1]["status"] == "IN_REVIEW"
+    assert data["stats"]["merged_count"] == 1
+    assert data["stats"]["in_review_count"] == 1
+
+

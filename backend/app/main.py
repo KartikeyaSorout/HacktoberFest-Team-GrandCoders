@@ -17,12 +17,13 @@ from app.config import settings
 from app.exceptions import AppException
 
 START_TIME = time.time()
-from app.routers import repo, issues, plan, pr, tests
+from app.routers import repo, issues, plan, pr, tests, user
 
 # ─── App Setup ───────────────────────────────────────────────────────
 
 tags_metadata = [
     {"name": "Health", "description": "API health status and diagnostic checks."},
+    {"name": "User", "description": "Connected GitHub user profile and live PR sync."},
     {"name": "Repository", "description": "Analyze GitHub repository structure, tech stack, and beginner issues."},
     {"name": "Issues", "description": "Explain and simplify GitHub issues using Gemma 4 AI."},
     {"name": "Plan", "description": "Generate step-by-step contribution implementation roadmap."},
@@ -76,6 +77,7 @@ app.include_router(issues.router, prefix="/api", tags=["Issues"])
 app.include_router(plan.router, prefix="/api", tags=["Plan"])
 app.include_router(pr.router, prefix="/api", tags=["Pull Request"])
 app.include_router(tests.router, prefix="/api", tags=["Tests"])
+app.include_router(user.router, prefix="/api", tags=["User"])
 
 
 # ─── Health Check ────────────────────────────────────────────────────

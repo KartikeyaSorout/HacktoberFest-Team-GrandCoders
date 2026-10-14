@@ -128,3 +128,61 @@ class PRGenerateResponse(BaseModel):
     issue_number: int
     title: str = ""
     body: str = ""
+
+
+# ─── User Profile & PR Live Sync Models ──────────────────────────────
+
+class UserProfileResponse(BaseModel):
+    """GitHub user profile information."""
+    login: str
+    name: str = ""
+    avatar_url: str = ""
+    bio: str = ""
+    html_url: str = ""
+    public_repos: int = 0
+    followers: int = 0
+
+
+class UserPRItem(BaseModel):
+    """Details of a user's GitHub pull request."""
+    id: str
+    number: int
+    repo: str
+    title: str
+    status: str  # MERGED, IN_REVIEW, PUSHED, WORKING_ON, CLOSED
+    status_label: str
+    badge_class: str
+    bg_pill: str
+    color_pill: str
+    date: str
+    updated_date: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    html_url: str = ""
+    is_merged: bool = False
+    is_draft: bool = False
+    comments: int = 0
+    labels: list[str] = []
+    requested_reviewers: list[str] = []
+    reviews_count: int = 0
+
+
+class UserStats(BaseModel):
+    """Summary metrics of a user's pull requests and Hacktoberfest challenge."""
+    total_prs: int = 0
+    merged_count: int = 0
+    in_review_count: int = 0
+    pushed_count: int = 0
+    working_on_count: int = 0
+    closed_count: int = 0
+    target: int = 4
+    progress: float = 0.0
+    milestone_reached: bool = False
+
+
+class UserPRsResponse(BaseModel):
+    """Full live sync payload of user's pull requests and challenge progress."""
+    username: str
+    prs: list[UserPRItem] = []
+    stats: UserStats
+

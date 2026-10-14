@@ -8,6 +8,7 @@ Fetches repository metadata, file trees, issues, README, and more.
 import re
 import time
 import base64
+from datetime import datetime
 import httpx
 from typing import Any, Optional
 
@@ -285,6 +286,189 @@ class GitHubClient:
             return content
         except httpx.HTTPStatusError:
             return ""
+
+    async def get_user_profile(self, username: str, token: Optional[str] = None) -> dict:
+        """Fetch a GitHub user's public profile."""
+        username = username.strip().lstrip("@")
+        headers = dict(self.headers)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        url = f"{self.base_url}/users/{username}"
+        cache_key = f"user_profile:{username}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 404:
+                raise ValueError(f"GitHub user '{username}' was not found.")
+            resp.raise_for_status()
+            data = resp.json()
+
+            profile = {
+                "login": data.get("login", username),
+                "name": data.get("name") or data.get("login", username),
+                "avatar_url": data.get("avatar_url", ""),
+                "bio": data.get("bio") or "",
+                "html_url": data.get("html_url", f"https://github.com/{username}"),
+                "public_repos": data.get("public_repos", 0),
+                "followers": data.get("followers", 0),
+            }
+            self.cache.set(cache_key, profile, ttl=300)  # 5 min cache
+            return profile
+
+    async def get_user_prs(self, username: str, token: Optional[str] = None) -> dict:
+        """Fetch and categorize all pull requests for a specific GitHub user."""
+        username = username.strip().lstrip("@")
+        headers = dict(self.headers)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        cache_key = f"user_prs:{username}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
+        search_url = f"{self.base_url}/search/issues"
+        params = {
+            "q": f"author:{username} type:pr",
+            "sort": "updated",
+            "order": "desc",
+            "per_page": 50,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(search_url, headers=headers, params=params)
+            if resp.status_code == 403:
+                raise ValueError("GitHub rate limit exceeded. Please provide a personal access token.")
+            resp.raise_for_status()
+            search_data = resp.json()
+
+            items = search_data.get("items", [])
+            prs = []
+
+            for item in items:
+                repo_url = item.get("repository_url", "")
+                repo_parts = repo_url.split("/")
+                repo_name = f"{repo_parts[-2]}/{repo_parts[-1]}" if len(repo_parts) >= 2 else "repository"
+                number = item.get("number")
+
+                pr_meta = item.get("pull_request", {})
+                is_merged = pr_meta.get("merged_at") is not None
+                is_draft = item.get("draft", False)
+                state = item.get("state", "open")
+
+                # Try to fetch additional PR details for draft, reviews, and requested reviewers
+                requested_reviewers = []
+                reviews_count = 0
+                if state == "open" and not is_merged:
+                    try:
+                        pull_resp = await client.get(f"{self.base_url}/repos/{repo_name}/pulls/{number}", headers=headers)
+                        if pull_resp.status_code == 200:
+                            pull_data = pull_resp.json()
+                            is_draft = pull_data.get("draft", is_draft)
+                            is_merged = pull_data.get("merged", is_merged)
+                            req_revs = pull_data.get("requested_reviewers", [])
+                            requested_reviewers = [r.get("login") for r in req_revs if isinstance(r, dict)]
+
+                            # Check reviews
+                            rev_resp = await client.get(f"{self.base_url}/repos/{repo_name}/pulls/{number}/reviews", headers=headers)
+                            if rev_resp.status_code == 200:
+                                reviews_count = len(rev_resp.json())
+                    except Exception:
+                        pass
+
+                # Categorize Status: MERGED, IN_REVIEW, PUSHED, WORKING_ON, CLOSED
+                if is_merged:
+                    status = "MERGED"
+                    status_label = "Merged"
+                    badge_class = "tag--beginner"
+                    bg_pill = "#D1FAE5"
+                    color_pill = "#065F46"
+                elif state == "closed":
+                    status = "CLOSED"
+                    status_label = "Closed"
+                    badge_class = "tag--tech"
+                    bg_pill = "#F3F4F6"
+                    color_pill = "#4B5563"
+                elif is_draft:
+                    status = "WORKING_ON"
+                    status_label = "Working On"
+                    badge_class = "tag--advanced"
+                    bg_pill = "#F3E8FF"
+                    color_pill = "#6B21A8"
+                elif requested_reviewers or reviews_count > 0:
+                    status = "IN_REVIEW"
+                    status_label = "In Review"
+                    badge_class = "tag--intermediate"
+                    bg_pill = "#FEF3C7"
+                    color_pill = "#92400E"
+                else:
+                    status = "PUSHED"
+                    status_label = "Pushed / Created"
+                    badge_class = "tag--tech"
+                    bg_pill = "#EFF6FF"
+                    color_pill = "#1E40AF"
+
+                # Parse created_at and updated_at
+                created_raw = item.get("created_at", "")
+                date_str = "Recent"
+                if created_raw:
+                    try:
+                        dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+                        date_str = dt.strftime("%b %d, %Y")
+                    except Exception:
+                        date_str = created_raw[:10]
+
+                prs.append({
+                    "id": f"PR-{number}",
+                    "number": number,
+                    "repo": repo_name,
+                    "title": item.get("title", ""),
+                    "status": status,
+                    "status_label": status_label,
+                    "badge_class": badge_class,
+                    "bg_pill": bg_pill,
+                    "color_pill": color_pill,
+                    "date": date_str,
+                    "created_at": created_raw,
+                    "updated_at": item.get("updated_at", ""),
+                    "html_url": item.get("html_url", ""),
+                    "is_merged": is_merged,
+                    "is_draft": is_draft,
+                    "comments": item.get("comments", 0),
+                    "labels": [l.get("name") if isinstance(l, dict) else str(l) for l in item.get("labels", [])],
+                    "requested_reviewers": requested_reviewers,
+                    "reviews_count": reviews_count,
+                })
+
+            merged_count = sum(1 for p in prs if p["status"] == "MERGED")
+            in_review_count = sum(1 for p in prs if p["status"] == "IN_REVIEW")
+            pushed_count = sum(1 for p in prs if p["status"] == "PUSHED")
+            working_on_count = sum(1 for p in prs if p["status"] == "WORKING_ON")
+            closed_count = sum(1 for p in prs if p["status"] == "CLOSED")
+
+            stats = {
+                "total_prs": len(prs),
+                "merged_count": merged_count,
+                "in_review_count": in_review_count,
+                "pushed_count": pushed_count,
+                "working_on_count": working_on_count,
+                "closed_count": closed_count,
+                "target": 4,
+                "progress": min(merged_count / 4.0, 1.0),
+                "milestone_reached": merged_count >= 4,
+            }
+
+            result = {
+                "username": username,
+                "prs": prs,
+                "stats": stats,
+            }
+            self.cache.set(cache_key, result, ttl=180)  # 3 min cache
+            return result
 
 
 # Singleton instance

@@ -355,6 +355,16 @@ input, textarea {
   color: #E2E8F0;
 }
 
+.nb-connect-btn--active {
+  background: #D1FAE5;
+  color: #065F46;
+  border-color: #059669;
+}
+
+.nb-connect-btn--active:hover {
+  background: #A7F3D0;
+}
+
 .nb-user-status-dot {
   width: 8px;
   height: 8px;
@@ -362,6 +372,11 @@ input, textarea {
   border-radius: 50%;
   border: 1px solid #000000;
   animation: pulse 2s infinite;
+}
+
+.nb-user-status-dot--connected {
+  background: #10B981;
+  box-shadow: 0 0 8px #10B981;
 }
 
 /* ─── Main Content Canvas ────────────────────────────────── */

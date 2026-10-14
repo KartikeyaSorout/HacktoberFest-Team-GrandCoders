@@ -6,13 +6,15 @@ import TopBanner from './TopBanner';
 import CommandPalette from './CommandPalette';
 import BackToTop from './BackToTop';
 import PrChecklistModal from './PrChecklistModal';
+import ConnectAccountModal from './ConnectAccountModal';
 
 export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
-  // Global Ctrl+K / Cmd+K listener
+  // Global Ctrl+K / Cmd+K listener and modal opener listener
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -20,8 +22,17 @@ export default function AppShell({ children }) {
         setCmdOpen((prev) => !prev);
       }
     };
+
+    const handleOpenConnect = () => {
+      setIsConnectModalOpen(true);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('open_connect_account_modal', handleOpenConnect);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('open_connect_account_modal', handleOpenConnect);
+    };
   }, []);
 
   return (
@@ -31,6 +42,7 @@ export default function AppShell({ children }) {
         isOpen={sidebarOpen} 
         onClose={() => setSidebarOpen(false)}
         onOpenCommandPalette={() => setCmdOpen(true)}
+        onOpenConnectAccount={() => setIsConnectModalOpen(true)}
       />
 
       {/* 2. Main Content Canvas */}
@@ -99,7 +111,13 @@ export default function AppShell({ children }) {
         issueNumber={1}
       />
 
-      {/* 5. Back to Top Button */}
+      {/* 5. Global Connect GitHub Account Modal */}
+      <ConnectAccountModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+      />
+
+      {/* 6. Back to Top Button */}
       <BackToTop />
     </div>
   );

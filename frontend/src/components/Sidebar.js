@@ -1,14 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { getStoredAccount, SYNC_EVENT_NAME } from '../services/githubSync';
 
-export default function Sidebar({ isOpen, onClose, onOpenCommandPalette }) {
+export default function Sidebar({ isOpen, onClose, onOpenCommandPalette, onOpenConnectAccount }) {
   const pathname = usePathname();
   const router = useRouter();
   const [userAccount, setUserAccount] = useState('Dev_pilot');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    // Initial load
+    const stored = getStoredAccount();
+    if (stored.isConnected && stored.user) {
+      setUserAccount(stored.user.login);
+      setAvatarUrl(stored.user.avatar_url || '');
+      setIsConnected(true);
+    }
+
+    // Sync listener
+    const handleSync = (e) => {
+      const detail = e.detail;
+      if (detail && detail.isConnected && detail.user) {
+        setUserAccount(detail.user.login);
+        setAvatarUrl(detail.user.avatar_url || '');
+        setIsConnected(true);
+      } else {
+        setUserAccount('Dev_pilot');
+        setAvatarUrl('');
+        setIsConnected(false);
+      }
+    };
+
+    window.addEventListener(SYNC_EVENT_NAME, handleSync);
+    return () => window.removeEventListener(SYNC_EVENT_NAME, handleSync);
+  }, []);
+
+  const handleConnect = () => {
+    if (onOpenConnectAccount) {
+      onOpenConnectAccount();
+    }
+  };
 
   const navItems = [
     { number: '01', label: 'Dashboard', href: '/', icon: 'sq-red', id: 'nav-dashboard' },
@@ -17,19 +52,6 @@ export default function Sidebar({ isOpen, onClose, onOpenCommandPalette }) {
     { number: '04', label: 'First Issues', href: '/first-issues', icon: 'sq-red', id: 'nav-first-issues' },
     { number: '05', label: 'PR Tracker', href: '/tracker', icon: 'dot-yellow', id: 'nav-pr-tracker' },
   ];
-
-  const handleConnect = () => {
-    if (isConnected) {
-      setIsConnected(false);
-      setUserAccount('Dev_pilot');
-    } else {
-      const username = prompt('Enter your GitHub username:', 'Octocat_Hero');
-      if (username) {
-        setUserAccount(username.trim());
-        setIsConnected(true);
-      }
-    }
-  };
 
   const isActive = (item) => {
     if (item.href === '/') return pathname === '/';
@@ -142,14 +164,21 @@ export default function Sidebar({ isOpen, onClose, onOpenCommandPalette }) {
         <div className="nb-sidebar__footer">
           <button 
             type="button" 
-            className="nb-connect-btn"
+            className={`nb-connect-btn ${isConnected ? 'nb-connect-btn--active' : ''}`}
             onClick={handleConnect}
             id="connect-account-btn"
+            title={isConnected ? `Connected as @${userAccount}. Click to manage/sync` : 'Connect your GitHub account'}
           >
-            {isConnected ? '✓ Connected' : 'Connect Account'}
+            {isConnected ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#059669', fontWeight: 900 }}>✓</span> @{userAccount}
+              </span>
+            ) : (
+              'Connect Account'
+            )}
           </button>
           <div className="nb-sidebar__user-badge">
-            <span className="nb-user-status-dot" />
+            <span className={`nb-user-status-dot ${isConnected ? 'nb-user-status-dot--connected' : ''}`} />
             <span className="nb-user-text">User: <strong>{userAccount}</strong></span>
           </div>
         </div>

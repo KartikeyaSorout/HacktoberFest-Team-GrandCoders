@@ -61,6 +61,23 @@ export default function CommandPalette({ isOpen, onClose }) {
           action: () => router.push('/analyze'),
         },
         {
+          id: 'nav-tracker',
+          title: 'Live PR Tracker',
+          desc: 'Track merged, in review, pushed and draft PRs',
+          icon: '📊',
+          action: () => router.push('/tracker'),
+        },
+        {
+          id: 'action-connect-gh',
+          title: 'Connect GitHub Account',
+          desc: 'Live sync your contributions and challenge progress',
+          icon: '🐙',
+          action: () => {
+            onClose();
+            window.dispatchEvent(new CustomEvent('open_connect_account_modal'));
+          },
+        },
+        {
           id: 'nav-first-issues',
           title: 'Filter Beginner Issues',
           desc: 'Direct view of Good First Issues',
